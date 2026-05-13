@@ -1,0 +1,97 @@
+@import "tailwindcss";
+@import '@fontsource/plus-jakarta-sans/400.css';
+@import '@fontsource/plus-jakarta-sans/500.css';
+@import '@fontsource/plus-jakarta-sans/600.css';
+@import '@fontsource/plus-jakarta-sans/700.css';
+
+:root {
+  /* Base palette */
+  --color-navy:        #0f172a;
+  --color-navy-900:    #0b1326;
+  --color-navy-800:    #1e293b;
+  --color-navy-700:    #334155;
+  --color-navy-600:    #475569;
+
+  --color-gold:        #f59e0b;
+  --color-gold-light:  #fcd34d;
+  --color-gold-dark:   #d97706;
+
+  --color-surface:     #f8fafc;
+
+  /* Contrast-first tokens (used by components & global overrides) */
+  --color-border:      #94a3b8; /* sharper than previous */
+  --color-border-soft: #cbd5e1;
+  --color-text-muted:  #475569; /* slightly darker than before */
+  --color-text-subtle: #64748b;
+
+  --color-success:     #10b981;
+  --color-danger:      #ef4444;
+
+  --font-sans: 'Plus Jakarta Sans', sans-serif;
+}
+
+
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: #f8fafc;
+  color: #0f172a;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+*:focus-visible {
+  outline: 2px solid #f59e0b;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar       { width: 6px; }
+::-webkit-scrollbar-track { background: #f8fafc; }
+::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.fade-up   { animation: fadeUp 0.4s ease both; }
+.fade-in   { animation: fadeIn 0.3s ease both; }
+.fade-up-1 { animation-delay: 0.05s; }
+.fade-up-2 { animation-delay: 0.10s; }
+.fade-up-3 { animation-delay: 0.15s; }
+.fade-up-4 { animation-delay: 0.20s; }
+.fade-up-5 { animation-delay: 0.25s; }
+
+/* Improve global border/text contrast for readability at distance */
+body {
+  color: var(--color-navy);
+}
+
+/* Default border color to be sharper across components */
+:where(.border) {
+  border-color: var(--color-border);
+}
+
+/* Ensure subtle muted text remains readable */
+:where(p, span, a, label, li, div) {
+  /* no-op: keep existing tailwind colors; this selector is intentionally light */
+}
+
+/* HR / separator lines */
+hr {
+  border: 0;
+  height: 1px;
+  background: var(--color-border-soft);
+}
+

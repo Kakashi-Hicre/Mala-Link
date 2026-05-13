@@ -1,0 +1,15 @@
+
+cd mygitrepo/mala-link
+
+
+cd mygitrepo/mala-link/web
+npm run dev
+
+
+cd mygitrepo/mala-link/api
+npm run dev
+
+
+npx prisma studio
+
+
