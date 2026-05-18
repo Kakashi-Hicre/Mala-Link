@@ -1,11 +1,25 @@
 const prisma = require('../../prisma/prisma.client');
 const { notifyStatusChange } = require('../notifications/notifications.service');
 
+// ── Helper: get whichever form exists for an application ───────
+// Returns { form, formType } or { form: null }
+const getFormForApplication = (application) => {
+  if (application.nrbForm)         return { form: application.nrbForm,        formType: 'nrbForm'         };
+  if (application.immigrationForm) return { form: application.immigrationForm, formType: 'immigrationForm' };
+  if (application.drtssForm)       return { form: application.drtssForm,       formType: 'drtssForm'       };
+  return { form: null, formType: null };
+};
+
+// ── Include clause that pulls all three possible forms ─────────
+const FULL_FORM_INCLUDE = {
+  nrbForm:         true,
+  immigrationForm: true,
+  drtssForm:       true,
+};
+
 // Citizen: submit a new application
 const createApplication = async ({ citizenId, type, agencyName }) => {
-  const agency = await prisma.agency.findUnique({
-    where: { name: agencyName },
-  });
+  const agency = await prisma.agency.findUnique({ where: { name: agencyName } });
 
   if (!agency) {
     const error = new Error(`Agency ${agencyName} not found. Valid options: NRB, DRTSS, IMMIGRATION`);
@@ -27,122 +41,13 @@ const createApplication = async ({ citizenId, type, agencyName }) => {
     throw error;
   }
 
-  const application = await prisma.application.create({
+  return await prisma.application.create({
     data: { citizenId, agencyId: agency.id, type },
     include: {
       citizen: { select: { id: true, fullName: true, email: true } },
       agency:  { select: { id: true, name: true } },
     },
   });
-
-  return application;
-};
-
-// Citizen: submit the application form for a specific application
-const submitApplicationForm = async ({ applicationId, citizenId, formData }) => {
-  // 1. Verify application exists and belongs to this citizen
-  const application = await prisma.application.findUnique({
-    where: { id: applicationId },
-    include: { form: true },
-  });
-
-  if (!application) {
-    const error = new Error('Application not found');
-    error.statusCode = 404;
-    throw error;
-  }
-
-  if (application.citizenId !== citizenId) {
-    const error = new Error('This application does not belong to you');
-    error.statusCode = 403;
-    throw error;
-  }
-
-  // 2. Only allow form submission for PENDING applications
-  if (!['PENDING', 'PROCESSING'].includes(application.status)) {
-    const error = new Error(`Cannot submit a form for an application that is ${application.status}`);
-    error.statusCode = 400;
-    throw error;
-  }
-
-  // 3. If form already exists, update it instead of creating
-  if (application.form) {
-    const updated = await prisma.applicationForm.update({
-      where: { applicationId },
-      data:  formData,
-    });
-    return updated;
-  }
-
-  // 4. Create new form
-  const form = await prisma.applicationForm.create({
-    data: {
-      applicationId,
-      ...formData,
-    },
-  });
-
-  return form;
-};
-
-// Get the form for a specific application
-const getApplicationForm = async ({ applicationId, citizenId, role }) => {
-  const application = await prisma.application.findUnique({
-    where:   { id: applicationId },
-    include: { form: true },
-  });
-
-  if (!application) {
-    const error = new Error('Application not found');
-    error.statusCode = 404;
-    throw error;
-  }
-
-  // Citizens can only see their own
-  if (role === 'CITIZEN' && application.citizenId !== citizenId) {
-    const error = new Error('Access denied');
-    error.statusCode = 403;
-    throw error;
-  }
-
-  if (!application.form) {
-    const error = new Error('No form submitted for this application yet');
-    error.statusCode = 404;
-    throw error;
-  }
-
-  return application.form;
-};
-
-// Agency staff: verify (approve) or flag an application form
-const verifyApplicationForm = async ({ applicationId, staffId, isVerified }) => {
-  const application = await prisma.application.findUnique({
-    where:   { id: applicationId },
-    include: { form: true },
-  });
-
-  if (!application) {
-    const error = new Error('Application not found');
-    error.statusCode = 404;
-    throw error;
-  }
-
-  if (!application.form) {
-    const error = new Error('No form found for this application');
-    error.statusCode = 404;
-    throw error;
-  }
-
-  const updatedForm = await prisma.applicationForm.update({
-    where: { applicationId },
-    data: {
-      isVerified,
-      verifiedAt:   isVerified ? new Date() : null,
-      verifiedById: isVerified ? staffId    : null,
-    },
-  });
-
-  return updatedForm;
 };
 
 // Citizen: get all their own applications
@@ -151,9 +56,9 @@ const getMyCitizenApplications = async (citizenId) => {
     where: { citizenId },
     include: {
       agency:    { select: { name: true } },
-      documents: { select: { id: true, fileName: true, fileUrl: true } },
+      documents: { select: { id: true, fileName: true, fileUrl: true, documentType: true } },
       idCard:    true,
-      form:      { select: { isVerified: true, fullName: true, createdAt: true } },
+      ...FULL_FORM_INCLUDE,
     },
     orderBy: { createdAt: 'desc' },
   });
@@ -168,7 +73,7 @@ const getApplicationById = async ({ applicationId, citizenId, role }) => {
       agency:    { select: { name: true } },
       documents: true,
       idCard:    true,
-      form:      true,
+      ...FULL_FORM_INCLUDE,
     },
   });
 
@@ -199,7 +104,7 @@ const getAgencyApplications = async ({ agencyId, status, type }) => {
       citizen:   { select: { id: true, fullName: true, email: true, phone: true } },
       documents: true,
       idCard:    true,
-      form:      true,   // ← staff need to see the form to verify it
+      ...FULL_FORM_INCLUDE,
     },
     orderBy: { createdAt: 'desc' },
   });
@@ -208,7 +113,7 @@ const getAgencyApplications = async ({ agencyId, status, type }) => {
 // Agency staff/admin: update application status
 const updateApplicationStatus = async ({ applicationId, status, notes, staffId }) => {
   const application = await prisma.application.findUnique({
-    where: { id: applicationId },
+    where:   { id: applicationId },
     include: { citizen: true, agency: true },
   });
 
@@ -257,7 +162,10 @@ const getAllApplications = async ({ status, type }) => {
     include: {
       citizen: { select: { id: true, fullName: true, email: true } },
       agency:  { select: { name: true } },
-      form:    { select: { isVerified: true } },
+      // Only include verification status, not full form data
+      nrbForm:         { select: { isVerified: true } },
+      immigrationForm: { select: { isVerified: true } },
+      drtssForm:       { select: { isVerified: true } },
     },
     orderBy: { createdAt: 'desc' },
   });
@@ -265,12 +173,11 @@ const getAllApplications = async ({ status, type }) => {
 
 module.exports = {
   createApplication,
-  submitApplicationForm,
-  getApplicationForm,
-  verifyApplicationForm,
   getMyCitizenApplications,
   getApplicationById,
   getAgencyApplications,
   updateApplicationStatus,
   getAllApplications,
+  getFormForApplication,       // exported so idcards.service can use it
+  FULL_FORM_INCLUDE,           // exported so idcards.service can use it
 };

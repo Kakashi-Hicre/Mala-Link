@@ -54,6 +54,35 @@ enum Sex {
   FEMALE
 }
 
+// Which type of file is being uploaded — enforced at DB level
+enum DocumentType {
+  PASSPORT_PHOTO      // All agencies  — passport-size photo (webcam or upload)
+  FINGERPRINT         // Immigration   — scanned fingerprint image
+  DIGITAL_SIGNATURE   // Immigration   — signature scan
+  NATIONAL_ID_SCAN    // DRTSS / IMMG  — both sides of Malawi NID
+  MEDICAL_CERTIFICATE // DRTSS         — Form DL3 signed by doctor
+  BIRTH_CERTIFICATE   // NRB           — birth certificate scan
+  SUPPORTING_DOC      // NRB           — voter ID, village head letter, etc.
+}
+
+enum MaritalStatus {
+  NEVER_MARRIED
+  MARRIED
+  DIVORCED
+  WIDOWED
+  SEPARATED
+  ABANDONED
+}
+
+enum LicenceCategory {
+  A   // Motorcycles / Tricycles
+  B   // Light motor vehicles (≤3,500 kg, max 8 seats)
+  C1  // Medium goods vehicles
+  C   // Heavy goods vehicles
+  D1  // Minibuses
+  D   // Full passenger buses
+}
+
 // ─── Models ───────────────────────────────────────────────────
 
 model Citizen {
@@ -104,36 +133,112 @@ model Application {
   agencyId String
   agency   Agency  @relation(fields: [agencyId], references: [id])
 
-  documents Document[]
-  idCard    IdCard?          // ← relation field name stays idCard (camelCase)
-  form      ApplicationForm?
+  documents       Document[]
+  idCard          IdCard?
+
+  // ── Exactly one of these will be set, depending on type ──
+  nrbForm         NrbForm?
+  immigrationForm ImmigrationForm?
+  drtssForm       DrtssForm?
 }
 
-model ApplicationForm {
+// ─────────────────────────────────────────────────────────────
+// NRB — National Registration Bureau (National ID Card)
+// ─────────────────────────────────────────────────────────────
+model NrbForm {
   id            String      @id @default(uuid())
   applicationId String      @unique
   application   Application @relation(fields: [applicationId], references: [id])
 
-  // ── Personal Information ───────────────────────────────
-  fullName        String
+  // ── Full Name ──────────────────────────────────────────
+  firstName     String
+  otherNames    String?
+  surname       String
+
+  // ── Personal Details ───────────────────────────────────
   dateOfBirth     DateTime
   sex             Sex
-  placeOfBirth    String
-  district        String
-  nationality     String   @default("Malawian")
-  physicalAddress String
+  maritalStatus   MaritalStatus
+  nationality     String        @default("Malawian")
+  secondNationality String?
+  colourOfEyes    String
+  heightMeters    Float
+  phone           String
+  birthCertNo     String?
+  passportNo      String?
+  disability      String?       // Any disability or observation
+
+  // ── Place of Birth ─────────────────────────────────────
+  birthDistrict   String
+  birthTA         String        // Traditional Authority
+  birthVillage    String
+
+  // ── Residential Address ────────────────────────────────
+  residentialDistrict String
+  residentialTA       String
+  residentialVillage  String
+
+  // ── Permanent Original Home ────────────────────────────
+  permanentDistrict String
+  permanentTA       String
+  permanentVillage  String
+
+  // ── Mother's Details ───────────────────────────────────
+  motherFullName    String
+  motherNationality String   @default("Malawian")
+  motherIdNo        String?
+  motherDistrict    String
+  motherTA          String?
+  motherVillage     String?
+
+  // ── Father's Details ───────────────────────────────────
+  fatherFullName    String
+  fatherNationality String   @default("Malawian")
+  fatherIdNo        String?
+  fatherDistrict    String
+  fatherTA          String?
+  fatherVillage     String?
+
+  // ── Staff Review ───────────────────────────────────────
+  isVerified   Boolean   @default(false)
+  verifiedAt   DateTime?
+  verifiedById String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ─────────────────────────────────────────────────────────────
+// IMMIGRATION — Department of Immigration (Passport)
+// ─────────────────────────────────────────────────────────────
+model ImmigrationForm {
+  id            String      @id @default(uuid())
+  applicationId String      @unique
+  application   Application @relation(fields: [applicationId], references: [id])
+
+  // ── Full Name ──────────────────────────────────────────
+  surname       String
+  givenNames    String
+  maidenName    String?      // For married women who changed name
+
+  // ── Personal Details ───────────────────────────────────
+  dateOfBirth   DateTime
+  placeOfBirth  String       // City/District, Country
+  sex           Sex
+  nationality   String       @default("Malawian")
+  occupation    String
+  nationalIdNo  String       // Must present Malawi NID
+
+  // ── Physical Features ─────────────────────────────────
+  heightMeters  Float
+  eyeColour     String
 
   // ── Contact ───────────────────────────────────────────
-  phone String
-  email String?
+  permanentAddress String
+  phone            String
+  email            String?
 
-  // ── Next of Kin ───────────────────────────────────────
-  nextOfKinName     String
-  nextOfKinPhone    String
-  nextOfKinRelation String
-
-  // ── Document-specific (optional) ──────────────────────
-  existingLicenceNo  String?
+  // ── Renewal Info ──────────────────────────────────────
   previousPassportNo String?
 
   // ── Staff Review ──────────────────────────────────────
@@ -145,33 +250,73 @@ model ApplicationForm {
   updatedAt DateTime @updatedAt
 }
 
-model Document {
+// ─────────────────────────────────────────────────────────────
+// DRTSS — Dept of Road Traffic & Safety Services (Driver's Licence)
+// ─────────────────────────────────────────────────────────────
+model DrtssForm {
   id            String      @id @default(uuid())
-  fileName      String
-  fileUrl       String
-  fileType      String
-  uploadedAt    DateTime    @default(now())
-  applicationId String
+  applicationId String      @unique
   application   Application @relation(fields: [applicationId], references: [id])
+
+  // ── Personal Details ───────────────────────────────────
+  fullName          String
+  dateOfBirth       DateTime
+  sex               Sex
+  nationality       String   @default("Malawian")
+  nationalIdNo      String   // Must present original Malawi NID
+
+  // ── Contact ───────────────────────────────────────────
+  residentialAddress String
+  phone              String
+
+  // ── Licence Details ────────────────────────────────────
+  licenceCategories LicenceCategory[]  // One or more categories
+  existingLicenceNo String?            // For renewals only
+
+  // ── Staff Review ──────────────────────────────────────
+  isVerified   Boolean   @default(false)
+  verifiedAt   DateTime?
+  verifiedById String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
-// Model name = IdCard → Prisma generates prisma.idCard (perfect)
-model IdCard {
-  id         String     @id @default(uuid())
-  cardNumber String     @unique
+// ─────────────────────────────────────────────────────────────
+// Shared models
+// ─────────────────────────────────────────────────────────────
 
-  // ── Card Holder Info ──────────────────────────────────
+enum CaptureMethod {
+  WEBCAM  // Captured live via browser webcam
+  UPLOAD  // Uploaded from device storage
+}
+
+model Document {
+  id            String        @id @default(uuid())
+  fileName      String
+  fileUrl       String        // Stored path / cloud URL
+  documentType  DocumentType  // What this file represents
+  captureMethod CaptureMethod // How it was obtained
+  mimeType      String        // e.g. "image/jpeg", "application/pdf"
+  uploadedAt    DateTime      @default(now())
+  applicationId String
+  application   Application   @relation(fields: [applicationId], references: [id])
+}
+
+model IdCard {
+  id          String     @id @default(uuid())
+  cardNumber  String     @unique
+
   holderName  String
   sex         Sex
   dateOfBirth DateTime
   expiryDate  DateTime
   cardStatus  CardStatus @default(ACTIVE)
 
-  issuedAt  DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  createdAt DateTime @default(now())
+  issuedAt    DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdAt   DateTime @default(now())
 
-  // Optional — null for manually registered cards
   applicationId String?      @unique
   application   Application? @relation(fields: [applicationId], references: [id])
 }

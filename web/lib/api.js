@@ -44,16 +44,35 @@ export const citizensAPI = {
 
 // ─── Applications ────────────────────────────────────────
 export const applicationsAPI = {
-  create:       (data)      => api.post('/applications', data),
-  getMy:        ()          => api.get('/applications/my'),
-  getById:      (id)        => api.get(`/applications/${id}`),
-  updateStatus: (id, data)  => api.patch(`/applications/${id}/status`, data),
-  getAgencyAll: (params)    => api.get('/applications/agency/all', { params }),
+  create:       (data)     => api.post('/applications', data),
+  getMy:        ()         => api.get('/applications/my'),
+  getById:      (id)       => api.get(`/applications/${id}`),
+  updateStatus: (id, data) => api.patch(`/applications/${id}/status`, data),
+  getAgencyAll: (params)   => api.get('/applications/agency/all', { params }),
+};
 
-  // ── Application Form ─────────────────────────────────
-  submitForm:  (id, data)  => api.post(`/applications/${id}/form`, data),
-  getForm:     (id)        => api.get(`/applications/${id}/form`),
-  verifyForm:  (id, data)  => api.patch(`/applications/${id}/form/verify`, data),
+// ─── Agency-specific Forms ───────────────────────────────
+// These map exactly to the backend routes:
+//   POST   /api/forms/nrb/:applicationId
+//   GET    /api/forms/nrb/:applicationId
+//   PATCH  /api/forms/nrb/:applicationId/verify
+//   (same pattern for immigration and drtss)
+
+export const formsAPI = {
+  // NRB — National ID Card
+  submitNrb:         (applicationId, data) => api.post(`/forms/nrb/${applicationId}`, data),
+  getNrb:            (applicationId)       => api.get(`/forms/nrb/${applicationId}`),
+  verifyNrb:         (applicationId, data) => api.patch(`/forms/nrb/${applicationId}/verify`, data),
+
+  // Immigration — Passport
+  submitImmigration: (applicationId, data) => api.post(`/forms/immigration/${applicationId}`, data),
+  getImmigration:    (applicationId)       => api.get(`/forms/immigration/${applicationId}`),
+  verifyImmigration: (applicationId, data) => api.patch(`/forms/immigration/${applicationId}/verify`, data),
+
+  // DRTSS — Driving Licence
+  submitDrtss:       (applicationId, data) => api.post(`/forms/drtss/${applicationId}`, data),
+  getDrtss:          (applicationId)       => api.get(`/forms/drtss/${applicationId}`),
+  verifyDrtss:       (applicationId, data) => api.patch(`/forms/drtss/${applicationId}/verify`, data),
 };
 
 // ─── Documents ───────────────────────────────────────────
@@ -81,19 +100,14 @@ export const agenciesAPI = {
 
 // ─── ID Cards ────────────────────────────────────────────
 export const idcardsAPI = {
-  getMy:           ()              => api.get('/idcards/my'),
-  getById:         (id)            => api.get(`/idcards/${id}`),
-  issue:           (applicationId) => api.post(`/idcards/${applicationId}/issue`),
-  markAsCollected: (applicationId) => api.patch(`/idcards/${applicationId}/collect`),
-
-  // Staff: manually register a physical card
-  createManual:    (data)          => api.post('/idcards/manual', data),
-
-  // Staff: update card status (ACTIVE / LOST / EXPIRED / SUSPENDED)
+  getMy:           ()                 => api.get('/idcards/my'),
+  getById:         (id)               => api.get(`/idcards/${id}`),
+  issue:           (applicationId)    => api.post(`/idcards/${applicationId}/issue`),
+  markAsCollected: (applicationId)    => api.patch(`/idcards/${applicationId}/collect`),
+  createManual:    (data)             => api.post('/idcards/manual', data),
   updateStatus:    (cardNumber, data) => api.patch(`/idcards/${cardNumber}/status`, data),
 
   // Public: search by card number — no token needed
-  // Uses plain fetch in the landing page, but this is here for authenticated pages
   search: (cardNumber) =>
     fetch(`${API_URL}/idcards/search?cardNumber=${encodeURIComponent(cardNumber)}`)
       .then(res => res.json()),

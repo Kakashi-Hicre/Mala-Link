@@ -1,16 +1,44 @@
-const path  = require('path');
-const fs    = require('fs');
+const path   = require('path');
+const fs     = require('fs');
 const prisma = require('../../prisma/prisma.client');
 
+// Valid values from the DocumentType enum in schema.prisma
+const VALID_DOCUMENT_TYPES = [
+  'PASSPORT_PHOTO',
+  'FINGERPRINT',
+  'DIGITAL_SIGNATURE',
+  'NATIONAL_ID_SCAN',
+  'MEDICAL_CERTIFICATE',
+  'BIRTH_CERTIFICATE',
+  'SUPPORTING_DOC',
+];
+
+// Valid values from the CaptureMethod enum
+const VALID_CAPTURE_METHODS = ['WEBCAM', 'UPLOAD'];
+
 // Upload a document linked to an application
-const uploadDocument = async ({ applicationId, citizenId, file }) => {
-  // 1. Verify the application exists and belongs to this citizen
+const uploadDocument = async ({ applicationId, citizenId, file, documentType, captureMethod }) => {
+  // 1. Validate enums before hitting the DB
+  if (!VALID_DOCUMENT_TYPES.includes(documentType)) {
+    fs.unlinkSync(file.path);
+    const error = new Error(`Invalid documentType "${documentType}". Valid types: ${VALID_DOCUMENT_TYPES.join(', ')}`);
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (!VALID_CAPTURE_METHODS.includes(captureMethod)) {
+    fs.unlinkSync(file.path);
+    const error = new Error(`Invalid captureMethod "${captureMethod}". Must be WEBCAM or UPLOAD`);
+    error.statusCode = 400;
+    throw error;
+  }
+
+  // 2. Verify the application exists and belongs to this citizen
   const application = await prisma.application.findUnique({
     where: { id: applicationId },
   });
 
   if (!application) {
-    // Clean up the file multer already saved — no orphan files
     fs.unlinkSync(file.path);
     const error = new Error('Application not found');
     error.statusCode = 404;
@@ -24,7 +52,7 @@ const uploadDocument = async ({ applicationId, citizenId, file }) => {
     throw error;
   }
 
-  // 2. Only allow uploads when application is PENDING or PROCESSING
+  // 3. Only allow uploads when application is PENDING or PROCESSING
   if (!['PENDING', 'PROCESSING', 'PRINTING', 'READY'].includes(application.status)) {
     fs.unlinkSync(file.path);
     const error = new Error(`Cannot upload documents for an application that is ${application.status}`);
@@ -32,17 +60,18 @@ const uploadDocument = async ({ applicationId, citizenId, file }) => {
     throw error;
   }
 
-  // 3. Build a clean URL path for the file
-  // This is what the frontend will use to display the file
+  // 4. Build the URL path — served statically by Express
   const fileUrl = `/uploads/${applicationId}/${file.filename}`;
 
-  // 4. Save the document record in the database
+  // 5. Save the document record with the new schema fields
   const document = await prisma.document.create({
     data: {
       applicationId,
-      fileName: file.originalname,
+      fileName:      file.originalname,
       fileUrl,
-      fileType: file.mimetype,
+      documentType,   // e.g. "PASSPORT_PHOTO"
+      captureMethod,  // e.g. "WEBCAM" or "UPLOAD"
+      mimeType:      file.mimetype,  // e.g. "image/jpeg"
     },
   });
 
@@ -51,7 +80,6 @@ const uploadDocument = async ({ applicationId, citizenId, file }) => {
 
 // Get all documents for one application
 const getApplicationDocuments = async ({ applicationId, citizenId, role }) => {
-  // Verify the application exists
   const application = await prisma.application.findUnique({
     where: { id: applicationId },
   });
@@ -62,7 +90,6 @@ const getApplicationDocuments = async ({ applicationId, citizenId, role }) => {
     throw error;
   }
 
-  // Citizens can only see their own application documents
   if (role === 'CITIZEN' && application.citizenId !== citizenId) {
     const error = new Error('Access denied');
     error.statusCode = 403;
@@ -75,7 +102,7 @@ const getApplicationDocuments = async ({ applicationId, citizenId, role }) => {
   });
 };
 
-// Delete a document (citizen can only delete their own)
+// Delete a document
 const deleteDocument = async ({ documentId, citizenId, role }) => {
   const document = await prisma.document.findUnique({
     where:   { id: documentId },
@@ -88,20 +115,19 @@ const deleteDocument = async ({ documentId, citizenId, role }) => {
     throw error;
   }
 
-  // Citizens can only delete documents on their own applications
   if (role === 'CITIZEN' && document.application.citizenId !== citizenId) {
     const error = new Error('Access denied');
     error.statusCode = 403;
     throw error;
   }
 
-  // 1. Delete the physical file from disk
+  // Delete the physical file from disk
   const filePath = path.join(__dirname, '../../../', document.fileUrl);
   if (fs.existsSync(filePath)) {
     fs.unlinkSync(filePath);
   }
 
-  // 2. Delete the database record
+  // Delete the DB record
   await prisma.document.delete({ where: { id: documentId } });
 
   return { message: 'Document deleted successfully' };

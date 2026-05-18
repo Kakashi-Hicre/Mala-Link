@@ -1,26 +1,31 @@
 const express = require('express');
-const cors = require('cors');
+const cors    = require('cors');
 require('dotenv').config();
 
-const authRoutes         = require('./modules/auth/auth.routes');
-const citizenRoutes      = require('./modules/citizens/citizens.routes');
-const applicationRoutes  = require('./modules/applications/applications.routes');
-const documentRoutes     = require('./modules/documents/documents.routes');
-const notificationRoutes = require('./modules/notifications/notifications.routes');
-const agencyRoutes       = require('./modules/agencies/agencies.routes');
-const idcardRoutes       = require('./modules/idcards/idcards.routes');
+const authRoutes          = require('./modules/auth/auth.routes');
+const citizenRoutes       = require('./modules/citizens/citizens.routes');
+const applicationRoutes   = require('./modules/applications/applications.routes');
+const documentRoutes      = require('./modules/documents/documents.routes');
+const notificationRoutes  = require('./modules/notifications/notifications.routes');
+const agencyRoutes        = require('./modules/agencies/agencies.routes');
+const idcardRoutes        = require('./modules/idcards/idcards.routes');
+
+// ── New agency-specific form routes ───────────────────────────
+const nrbFormRoutes        = require('./modules/applications/nrbForm/nrbForm.routes');
+const immigrationFormRoutes = require('./modules/applications/immigrationForm/immigrationForm.routes');
+const drtssFormRoutes      = require('./modules/applications/drtssForm/drtssForm.routes');
 
 const app = express();
 
-// Middlewares
+// ── Middlewares ────────────────────────────────────────────────
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Serve uploaded files statically
-app.use('/uploads', require('express').static('uploads'));
+// Serve uploaded files statically — e.g. GET /uploads/<applicationId>/photo.jpg
+app.use('/uploads', express.static('uploads'));
 
-// All routes
+// ── Core routes ────────────────────────────────────────────────
 app.use('/api/auth',          authRoutes);
 app.use('/api/citizens',      citizenRoutes);
 app.use('/api/applications',  applicationRoutes);
@@ -29,7 +34,16 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/agencies',      agencyRoutes);
 app.use('/api/idcards',       idcardRoutes);
 
-// Health check
+// ── Agency-specific form routes ────────────────────────────────
+// Each citizen fills the form that matches their application type:
+//   NRB         → POST /api/forms/nrb/:applicationId
+//   Immigration → POST /api/forms/immigration/:applicationId
+//   DRTSS       → POST /api/forms/drtss/:applicationId
+app.use('/api/forms/nrb',         nrbFormRoutes);
+app.use('/api/forms/immigration',  immigrationFormRoutes);
+app.use('/api/forms/drtss',        drtssFormRoutes);
+
+// ── Health check ───────────────────────────────────────────────
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'Mala-Link API is running',
@@ -47,10 +61,18 @@ app.get('/api/health', (req, res) => {
       'GET    /api/applications/agency/all',
       'PATCH  /api/applications/:id/status',
       'GET    /api/applications',
-      // Application Form
-      'POST   /api/applications/:id/form',
-      'GET    /api/applications/:id/form',
-      'PATCH  /api/applications/:id/form/verify',
+      // NRB Form (National ID)
+      'POST   /api/forms/nrb/:applicationId',
+      'GET    /api/forms/nrb/:applicationId',
+      'PATCH  /api/forms/nrb/:applicationId/verify',
+      // Immigration Form (Passport)
+      'POST   /api/forms/immigration/:applicationId',
+      'GET    /api/forms/immigration/:applicationId',
+      'PATCH  /api/forms/immigration/:applicationId/verify',
+      // DRTSS Form (Driving Licence)
+      'POST   /api/forms/drtss/:applicationId',
+      'GET    /api/forms/drtss/:applicationId',
+      'PATCH  /api/forms/drtss/:applicationId/verify',
       // Documents
       'POST   /api/documents/upload/:applicationId',
       'GET    /api/documents/:applicationId',
@@ -75,12 +97,12 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// 404 handler
+// ── 404 handler ────────────────────────────────────────────────
 app.use((req, res) => {
   res.status(404).json({ message: `Route ${req.originalUrl} not found` });
 });
 
-// Global error handler
+// ── Global error handler ───────────────────────────────────────
 app.use((err, req, res, next) => {
   console.error(err.stack);
   res.status(err.statusCode || 500).json({ message: err.message || 'Server error' });

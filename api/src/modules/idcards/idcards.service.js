@@ -1,5 +1,6 @@
-const prisma                = require('../../prisma/prisma.client');
+const prisma                 = require('../../prisma/prisma.client');
 const { notifyStatusChange } = require('../notifications/notifications.service');
+const { getFormForApplication } = require('../applications/applications.service');
 
 // Generate a unique card number — Format: ML-NRB-2024-123456
 const generateCardNumber = (agencyName) => {
@@ -8,11 +9,52 @@ const generateCardNumber = (agencyName) => {
   return `ML-${agencyName}-${year}-${random}`;
 };
 
+// Helper: pull the name, sex, and dob from whichever form model exists
+const extractCardHolderInfo = (application) => {
+  const { form, formType } = getFormForApplication(application);
+
+  if (!form) return null;
+
+  // Each form model stores these fields differently
+  if (formType === 'nrbForm') {
+    return {
+      holderName:  `${form.firstName} ${form.otherNames ? form.otherNames + ' ' : ''}${form.surname}`.trim(),
+      sex:         form.sex,
+      dateOfBirth: form.dateOfBirth,
+    };
+  }
+
+  if (formType === 'immigrationForm') {
+    return {
+      holderName:  `${form.givenNames} ${form.surname}`.trim(),
+      sex:         form.sex,
+      dateOfBirth: form.dateOfBirth,
+    };
+  }
+
+  if (formType === 'drtssForm') {
+    return {
+      holderName:  form.fullName,
+      sex:         form.sex,
+      dateOfBirth: form.dateOfBirth,
+    };
+  }
+
+  return null;
+};
+
 // ── Agency staff: issue a card linked to an application ────────
 const issueIDCard = async ({ applicationId, staffAgencyId }) => {
   const application = await prisma.application.findUnique({
     where:   { id: applicationId },
-    include: { citizen: true, agency: true, idCard: true, form: true },
+    include: {
+      citizen:         true,
+      agency:          true,
+      idCard:          true,
+      nrbForm:         true,
+      immigrationForm: true,
+      drtssForm:       true,
+    },
   });
 
   if (!application) {
@@ -39,13 +81,18 @@ const issueIDCard = async ({ applicationId, staffAgencyId }) => {
     throw error;
   }
 
-  if (!application.form) {
+  // Get form data from whichever form model is filled
+  const cardHolder = extractCardHolderInfo(application);
+
+  if (!cardHolder) {
     const error = new Error('No application form found. The citizen must submit their form first.');
     error.statusCode = 400;
     throw error;
   }
 
-  if (!application.form.isVerified) {
+  // Check the form is verified
+  const { form } = getFormForApplication(application);
+  if (!form.isVerified) {
     const error = new Error('Application form has not been verified yet. Please verify the form before issuing a card.');
     error.statusCode = 400;
     throw error;
@@ -60,14 +107,15 @@ const issueIDCard = async ({ applicationId, staffAgencyId }) => {
       data: {
         applicationId,
         cardNumber,
-        holderName:  application.form.fullName,
-        sex:         application.form.sex,
-        dateOfBirth: application.form.dateOfBirth,
+        holderName:  cardHolder.holderName,
+        sex:         cardHolder.sex,
+        dateOfBirth: cardHolder.dateOfBirth,
         expiryDate,
-        cardStatus:  'ACTIVE',
-        issuedAt:    new Date(),
+        cardStatus: 'ACTIVE',
+        issuedAt:   new Date(),
       },
     }),
+    // If it's a National ID, update the citizen's nationalIdNo
     ...(application.type === 'NATIONAL_ID'
       ? [prisma.citizen.update({
           where: { id: application.citizenId },
@@ -99,7 +147,7 @@ const createManualCard = async ({ staffId, cardData }) => {
     throw error;
   }
 
-  const card = await prisma.idCard.create({
+  return await prisma.idCard.create({
     data: {
       cardNumber:  cardNumber.trim().toUpperCase(),
       holderName:  holderName.trim(),
@@ -110,12 +158,10 @@ const createManualCard = async ({ staffId, cardData }) => {
       issuedAt:    new Date(),
     },
   });
-
-  return card;
 };
 
 // ── Staff: update card status ──────────────────────────────────
-const updateCardStatus = async ({ cardNumber, cardStatus, staffId }) => {
+const updateCardStatus = async ({ cardNumber, cardStatus }) => {
   const card = await prisma.idCard.findUnique({
     where: { cardNumber: cardNumber.trim().toUpperCase() },
   });
