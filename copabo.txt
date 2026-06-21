@@ -10,6 +10,8 @@ cd mygitrepo/mala-link/api
 npm run dev
 
 
+taskkill /F /IM node.exe /T
+
 npx prisma studio
 
 
