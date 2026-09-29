@@ -1,4 +1,4 @@
-import translations from '@/translations/index,js';
+import translations from '@/translations/index.js';
 import { useLanguage } from '@/context/LanguageContext';
 
 export function useTranslation() {

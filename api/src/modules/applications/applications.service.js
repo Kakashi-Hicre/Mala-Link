@@ -137,7 +137,7 @@ const updateApplicationStatus = async ({ applicationId, status, notes, staffId }
     where: { id: applicationId },
     data:  { status, notes: notes || application.notes },
     include: {
-      citizen: { select: { id: true, fullName: true, email: true } },
+      citizen: { select: { id: true, fullName: true, email: true, phone: true } },
       agency:  { select: { name: true } },
     },
   });

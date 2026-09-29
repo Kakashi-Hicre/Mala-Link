@@ -4,6 +4,7 @@ import DashboardLayout from '@/components/layout/DashboardLayout';
 import PageHeader from '@/components/ui/PageHeader';
 import Card from '@/components/ui/Card';
 import { applicationsAPI, documentsAPI } from '@/lib/api';
+import { useTranslation } from '@/hooks/useTranslation';
 import toast from 'react-hot-toast';
 import {
   Upload, Trash2, FileText, Eye, Camera, X,
@@ -14,53 +15,55 @@ import {
 // ─────────────────────────────────────────────────────────────
 // Document-type config: what's required per service, icon,
 // description, and whether webcam capture is available.
+// labelKey/descKey are resolved with t() wherever they're used —
+// icon/allowWebcam/required stay as plain config, not translated text.
 // ─────────────────────────────────────────────────────────────
 const DOC_CONFIG = {
   PASSPORT_PHOTO: {
-    label: 'Passport Photo',
-    description: 'Clear face photo against a plain background. Webcam capture recommended.',
+    labelKey: 'docs.docType.passportPhoto.label',
+    descKey: 'docs.docType.passportPhoto.desc',
     icon: Camera,
     allowWebcam: true,
     required: true,
   },
   BIRTH_CERTIFICATE: {
-    label: 'Birth Certificate',
-    description: 'Scanned or photographed copy of your official birth certificate.',
+    labelKey: 'docs.docType.birthCert.label',
+    descKey: 'docs.docType.birthCert.desc',
     icon: FileCheck,
     allowWebcam: false,
     required: true,
   },
   SUPPORTING_DOC: {
-    label: 'Supporting Document',
-    description: 'Voter ID, village head letter, or any supporting identity document.',
+    labelKey: 'docs.docType.supportingDoc.label',
+    descKey: 'docs.docType.supportingDoc.desc',
     icon: FileText,
     allowWebcam: false,
     required: false,
   },
   NATIONAL_ID_SCAN: {
-    label: 'National ID (Both Sides)',
-    description: 'Clear scan or photo of the front AND back of your Malawi National ID.',
+    labelKey: 'docs.docType.nationalIdScan.label',
+    descKey: 'docs.docType.nationalIdScan.desc',
     icon: CreditCard,
     allowWebcam: true,
     required: true,
   },
   FINGERPRINT: {
-    label: 'Fingerprint',
-    description: 'Scanned fingerprint image. Use a scanner or capture with your device camera.',
+    labelKey: 'docs.docType.fingerprint.label',
+    descKey: 'docs.docType.fingerprint.desc',
     icon: Fingerprint,
     allowWebcam: true,
     required: true,
   },
   DIGITAL_SIGNATURE: {
-    label: 'Digital Signature',
-    description: 'Sign on paper, then photograph or scan and upload.',
+    labelKey: 'docs.docType.digitalSignature.label',
+    descKey: 'docs.docType.digitalSignature.desc',
     icon: PenLine,
     allowWebcam: true,
     required: true,
   },
   MEDICAL_CERTIFICATE: {
-    label: 'Medical Certificate (DL3)',
-    description: 'Form DL3 signed by a registered medical practitioner.',
+    labelKey: 'docs.docType.medicalCert.label',
+    descKey: 'docs.docType.medicalCert.desc',
     icon: Stethoscope,
     allowWebcam: false,
     required: true,
@@ -74,10 +77,33 @@ const SERVICE_DOCS = {
   DRIVING_LICENCE: ['PASSPORT_PHOTO', 'NATIONAL_ID_SCAN', 'MEDICAL_CERTIFICATE'],
 };
 
+// application.type / documentType are backend enum codes (e.g. 'NATIONAL_ID')
+// — these map them to translated display labels instead of the old raw
+// `.replace(/_/g, ' ')` (which just showed the shouty-case enum as-is).
+const SERVICE_LABEL_KEY = {
+  NATIONAL_ID:     'service.national.id',
+  PASSPORT:        'service.passport',
+  DRIVING_LICENCE: 'service.licence',
+};
+function serviceLabel(type, t) {
+  return SERVICE_LABEL_KEY[type] ? t(SERVICE_LABEL_KEY[type]) : type.replace(/_/g, ' ');
+}
+function docTypeLabel(type, t) {
+  return DOC_CONFIG[type] ? t(DOC_CONFIG[type].labelKey) : type?.replace(/_/g, ' ');
+}
+
+const STATUS_LABEL_KEY = {
+  PENDING:    'docs.status.pendingReview',
+  PROCESSING: 'status.PROCESSING',
+  PRINTING:   'status.PRINTING',
+  READY:      'docs.status.readyCollection',
+};
+
 // ─────────────────────────────────────────────────────────────
 // Webcam Modal
 // ─────────────────────────────────────────────────────────────
 function WebcamModal({ docType, onCapture, onClose }) {
+  const { t } = useTranslation();
   const videoRef  = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
@@ -92,7 +118,7 @@ function WebcamModal({ docType, onCapture, onClose }) {
     navigator.mediaDevices
       .getUserMedia({ video: { facingMode: 'user', width: 640, height: 480 }, audio: false })
       .then(stream => {
-        if (!active) { stream.getTracks().forEach(t => t.stop()); return; }
+        if (!active) { stream.getTracks().forEach(track => track.stop()); return; }
         streamRef.current = stream;
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
@@ -100,12 +126,13 @@ function WebcamModal({ docType, onCapture, onClose }) {
         }
       })
       .catch(() => {
-        if (active) setCamError('Camera access denied. Please allow camera permissions and try again.');
+        if (active) setCamError(t('docs.webcam.error'));
       });
     return () => {
       active = false;
-      streamRef.current?.getTracks().forEach(t => t.stop());
+      streamRef.current?.getTracks().forEach(track => track.stop());
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const capture = useCallback(() => {
@@ -116,12 +143,12 @@ function WebcamModal({ docType, onCapture, onClose }) {
     canvas.height = video.videoHeight;
     canvas.getContext('2d').drawImage(video, 0, 0);
     setSnapshot(canvas.toDataURL('image/jpeg', 0.92));
-    streamRef.current?.getTracks().forEach(t => (t.enabled = false));
+    streamRef.current?.getTracks().forEach(track => (track.enabled = false));
   }, []);
 
   const retake = useCallback(() => {
     setSnapshot(null);
-    streamRef.current?.getTracks().forEach(t => (t.enabled = true));
+    streamRef.current?.getTracks().forEach(track => (track.enabled = true));
   }, []);
 
   const confirm = useCallback(() => {
@@ -133,7 +160,7 @@ function WebcamModal({ docType, onCapture, onClose }) {
     const u8 = new Uint8Array(n);
     while (n--) u8[n] = bstr.charCodeAt(n);
     const file = new File([new Blob([u8], { type: mime })], `${docType.toLowerCase()}_capture.jpg`, { type: mime });
-    streamRef.current?.getTracks().forEach(t => t.stop());
+    streamRef.current?.getTracks().forEach(track => track.stop());
     onCapture(file);
   }, [snapshot, docType, onCapture]);
 
@@ -151,8 +178,8 @@ function WebcamModal({ docType, onCapture, onClose }) {
               <Camera size={15} color="#0f172a" />
             </div>
             <div>
-              <p style={{ color: 'white', fontWeight: 700, fontSize: 14 }}>Webcam Capture</p>
-              <p style={{ color: '#64748b', fontSize: 11 }}>{cfg.label}</p>
+              <p style={{ color: 'white', fontWeight: 700, fontSize: 14 }}>{t('docs.webcam.title')}</p>
+              <p style={{ color: '#64748b', fontSize: 11 }}>{t(cfg.labelKey)}</p>
             </div>
           </div>
           <button onClick={onClose} style={{ width: 30, height: 30, borderRadius: 8, background: 'rgba(255,255,255,0.07)', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -179,7 +206,7 @@ function WebcamModal({ docType, onCapture, onClose }) {
           {!camReady && !camError && !snapshot && (
             <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
               <div style={{ width: 36, height: 36, border: '3px solid #f59e0b', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-              <p style={{ color: '#64748b', fontSize: 12 }}>Starting camera…</p>
+              <p style={{ color: '#64748b', fontSize: 12 }}>{t('docs.webcam.starting')}</p>
             </div>
           )}
 
@@ -193,7 +220,7 @@ function WebcamModal({ docType, onCapture, onClose }) {
                 boxShadow: '0 0 0 9999px rgba(0,0,0,0.32)',
               }} />
               <p style={{ position: 'absolute', bottom: '12%', color: 'rgba(255,255,255,0.6)', fontSize: 10, fontWeight: 600, letterSpacing: '0.05em' }}>
-                CENTRE YOUR FACE
+                {t('docs.webcam.centreFace')}
               </p>
             </div>
           )}
@@ -203,7 +230,7 @@ function WebcamModal({ docType, onCapture, onClose }) {
 
         {/* Tip strip */}
         <div style={{ padding: '9px 20px', background: 'rgba(245,158,11,0.08)', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-          <p style={{ fontSize: 11, color: '#d97706', lineHeight: 1.5 }}>{cfg.description}</p>
+          <p style={{ fontSize: 11, color: '#d97706', lineHeight: 1.5 }}>{t(cfg.descKey)}</p>
         </div>
 
         {/* Action row */}
@@ -211,7 +238,7 @@ function WebcamModal({ docType, onCapture, onClose }) {
           {!snapshot ? (
             <>
               <button onClick={onClose} style={{ flex: 1, padding: '12px 0', border: '1.5px solid rgba(255,255,255,0.1)', borderRadius: 12, background: 'transparent', color: '#64748b', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
-                Cancel
+                {t('docs.webcam.cancel')}
               </button>
               <button onClick={capture} disabled={!camReady || !!camError} style={{
                 flex: 2, padding: '12px 0', border: 'none', borderRadius: 12,
@@ -221,16 +248,16 @@ function WebcamModal({ docType, onCapture, onClose }) {
                 cursor: (camReady && !camError) ? 'pointer' : 'not-allowed',
                 fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
               }}>
-                <Camera size={15} /> Capture Photo
+                <Camera size={15} /> {t('docs.webcam.capture')}
               </button>
             </>
           ) : (
             <>
               <button onClick={retake} style={{ flex: 1, padding: '12px 0', border: '1.5px solid rgba(255,255,255,0.1)', borderRadius: 12, background: 'transparent', color: '#94a3b8', fontWeight: 600, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-                <RefreshCw size={13} /> Retake
+                <RefreshCw size={13} /> {t('docs.webcam.retake')}
               </button>
               <button onClick={confirm} style={{ flex: 2, padding: '12px 0', border: 'none', borderRadius: 12, background: '#22c55e', color: 'white', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7 }}>
-                <CheckCircle size={15} /> Use This Photo
+                <CheckCircle size={15} /> {t('docs.webcam.useThisPhoto')}
               </button>
             </>
           )}
@@ -245,6 +272,7 @@ function WebcamModal({ docType, onCapture, onClose }) {
 // Individual document-type card
 // ─────────────────────────────────────────────────────────────
 function DocTypeCard({ docType, uploaded, uploading, onUpload, onWebcam, onDelete }) {
+  const { t }     = useTranslation();
   const cfg       = DOC_CONFIG[docType];
   const Icon      = cfg.icon;
   const fileInput = useRef(null);
@@ -269,7 +297,7 @@ function DocTypeCard({ docType, uploaded, uploading, onUpload, onWebcam, onDelet
       {uploading && (
         <div style={{ position: 'absolute', inset: 0, background: 'rgba(255,255,255,0.88)', zIndex: 5, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, borderRadius: 14 }}>
           <div style={{ width: 20, height: 20, border: '2.5px solid #f59e0b', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-          <p style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>Uploading…</p>
+          <p style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>{t('docs.uploading')}</p>
         </div>
       )}
 
@@ -285,13 +313,13 @@ function DocTypeCard({ docType, uploaded, uploading, onUpload, onWebcam, onDelet
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3, flexWrap: 'wrap' }}>
-            <p style={{ fontWeight: 700, fontSize: 13, color: '#0f172a' }}>{cfg.label}</p>
+            <p style={{ fontWeight: 700, fontSize: 13, color: '#0f172a' }}>{t(cfg.labelKey)}</p>
             {cfg.required
-              ? <span style={{ fontSize: 9, fontWeight: 800, color: '#ef4444', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 4, padding: '1px 5px', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>REQUIRED</span>
-              : <span style={{ fontSize: 9, fontWeight: 800, color: '#64748b', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 4, padding: '1px 5px', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>OPTIONAL</span>
+              ? <span style={{ fontSize: 9, fontWeight: 800, color: '#ef4444', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 4, padding: '1px 5px', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>{t('docs.badge.required')}</span>
+              : <span style={{ fontSize: 9, fontWeight: 800, color: '#64748b', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 4, padding: '1px 5px', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>{t('docs.badge.optional')}</span>
             }
           </div>
-          <p style={{ fontSize: 11, color: '#64748b', lineHeight: 1.55 }}>{cfg.description}</p>
+          <p style={{ fontSize: 11, color: '#64748b', lineHeight: 1.55 }}>{t(cfg.descKey)}</p>
         </div>
         {hasDoc && (
           <div style={{ width: 22, height: 22, background: '#22c55e', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 }}>
@@ -310,11 +338,11 @@ function DocTypeCard({ docType, uploaded, uploading, onUpload, onWebcam, onDelet
           <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
             <a href={`http://localhost:3000${uploaded.fileUrl}`} target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>
               <button style={{ padding: '4px 9px', border: '1px solid #bbf7d0', borderRadius: 6, background: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3, fontSize: 11, color: '#166534', fontWeight: 600, fontFamily: 'inherit' }}>
-                <Eye size={11} /> View
+                <Eye size={11} /> {t('docs.card.view')}
               </button>
             </a>
             <button onClick={() => onDelete(uploaded.id)} style={{ padding: '4px 9px', border: '1px solid #fecaca', borderRadius: 6, background: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3, fontSize: 11, color: '#ef4444', fontWeight: 600, fontFamily: 'inherit' }}>
-              <Trash2 size={11} /> Remove
+              <Trash2 size={11} /> {t('docs.card.remove')}
             </button>
           </div>
         </div>
@@ -329,7 +357,7 @@ function DocTypeCard({ docType, uploaded, uploading, onUpload, onWebcam, onDelet
             cursor: 'pointer', fontFamily: 'inherit',
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
           }}>
-            <Camera size={13} /> Webcam
+            <Camera size={13} /> {t('docs.webcamBtn')}
           </button>
         )}
         <button onClick={() => fileInput.current?.click()} style={{
@@ -338,7 +366,7 @@ function DocTypeCard({ docType, uploaded, uploading, onUpload, onWebcam, onDelet
           cursor: 'pointer', fontFamily: 'inherit',
           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
         }}>
-          <Upload size={13} /> {hasDoc ? 'Replace' : 'Upload File'}
+          <Upload size={13} /> {hasDoc ? t('docs.card.replace') : t('docs.card.uploadFile')}
         </button>
         <input ref={fileInput} type="file" accept=".jpg,.jpeg,.png,.pdf,.webp" onChange={handleFileChange} style={{ display: 'none' }} />
       </div>
@@ -350,6 +378,7 @@ function DocTypeCard({ docType, uploaded, uploading, onUpload, onWebcam, onDelet
 // Upload progress bar
 // ─────────────────────────────────────────────────────────────
 function UploadProgress({ total, done }) {
+  const { t } = useTranslation();
   const pct = total === 0 ? 0 : Math.round((done / total) * 100);
   const allDone = pct === 100;
   return (
@@ -358,7 +387,7 @@ function UploadProgress({ total, done }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           {allDone ? <CheckCircle size={13} color="#22c55e" /> : <AlertCircle size={13} color="#d97706" />}
           <p style={{ fontSize: 12, fontWeight: 700, color: allDone ? '#166534' : '#92400e' }}>
-            {allDone ? 'All required documents uploaded!' : 'Required documents'}
+            {allDone ? t('docs.progress.allDone') : t('docs.progress.required')}
           </p>
         </div>
         <p style={{ fontSize: 12, fontWeight: 800, color: allDone ? '#22c55e' : '#f59e0b' }}>
@@ -381,6 +410,7 @@ function UploadProgress({ total, done }) {
 // Main Page
 // ─────────────────────────────────────────────────────────────
 export default function DocumentsPage() {
+  const { t } = useTranslation();
   const [applications, setApplications] = useState([]);
   const [selectedApp,  setSelectedApp]  = useState(null);
   const [documents,    setDocuments]    = useState([]);
@@ -395,7 +425,8 @@ export default function DocumentsPage() {
         );
         setApplications(active);
       })
-      .catch(() => toast.error('Failed to load applications'));
+      .catch(() => toast.error(t('docs.toast.loadAppsFailed')));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadDocs = async (app) => {
@@ -405,7 +436,7 @@ export default function DocumentsPage() {
       const res = await documentsAPI.getByApplication(app.id);
       setDocuments(res.data.data);
     } catch {
-      toast.error('Failed to load documents');
+      toast.error(t('docs.toast.loadDocsFailed'));
     }
   };
 
@@ -418,11 +449,11 @@ export default function DocumentsPage() {
       fd.append('documentType', docType);
       fd.append('captureMethod', captureMethod);
       await documentsAPI.upload(selectedApp.id, fd);
-      toast.success(`${DOC_CONFIG[docType]?.label ?? docType} uploaded`);
+      toast.success(`${docTypeLabel(docType, t)} ${t('docs.toast.uploadedSuffix')}`);
       const res = await documentsAPI.getByApplication(selectedApp.id);
       setDocuments(res.data.data);
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Upload failed');
+      toast.error(err.response?.data?.message || t('docs.toast.uploadFailed'));
     } finally {
       setUploading(null);
     }
@@ -435,13 +466,13 @@ export default function DocumentsPage() {
   };
 
   const handleDelete = async (docId) => {
-    if (!confirm('Remove this document?')) return;
+    if (!confirm(t('docs.confirmRemove'))) return;
     try {
       await documentsAPI.delete(docId);
-      toast.success('Document removed');
+      toast.success(t('docs.toast.removed'));
       setDocuments(prev => prev.filter(d => d.id !== docId));
     } catch {
-      toast.error('Failed to remove document');
+      toast.error(t('docs.toast.removeFailed'));
     }
   };
 
@@ -452,19 +483,14 @@ export default function DocumentsPage() {
   }, {});
 
   const docTypes      = selectedApp ? (SERVICE_DOCS[selectedApp.type] ?? []) : [];
-  const requiredTypes = docTypes.filter(t => DOC_CONFIG[t]?.required);
-  const doneCount     = requiredTypes.filter(t => uploadedMap[t]).length;
-
-  const STATUS_LABEL = {
-    PENDING: 'Pending Review', PROCESSING: 'Processing',
-    PRINTING: 'Printing', READY: 'Ready for Collection',
-  };
+  const requiredTypes = docTypes.filter(dt => DOC_CONFIG[dt]?.required);
+  const doneCount     = requiredTypes.filter(dt => uploadedMap[dt]).length;
 
   return (
     <DashboardLayout>
       <PageHeader
-        title="Documents"
-        subtitle="Upload the required supporting documents for your applications."
+        title={t('docs.title')}
+        subtitle={t('docs.page.subtitle')}
       />
 
       <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 24, alignItems: 'start' }}>
@@ -472,23 +498,23 @@ export default function DocumentsPage() {
         {/* ── Left: Application selector ── */}
         <div>
           <p style={{ fontSize: 10, fontWeight: 800, color: '#94a3b8', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 12 }}>
-            Active Applications
+            {t('docs.active.apps')}
           </p>
 
           {applications.length === 0 ? (
             <div style={{ background: 'white', borderRadius: 16, border: '1.5px solid #e2e8f0', padding: '28px 16px', textAlign: 'center' }}>
               <ImageIcon size={26} color="#cbd5e1" style={{ margin: '0 auto 8px' }} />
-              <p style={{ fontSize: 12, fontWeight: 600, color: '#94a3b8' }}>No active applications</p>
-              <p style={{ fontSize: 11, color: '#cbd5e1', marginTop: 3, lineHeight: 1.5 }}>Submit an application first.</p>
+              <p style={{ fontSize: 12, fontWeight: 600, color: '#94a3b8' }}>{t('docs.no.active')}</p>
+              <p style={{ fontSize: 11, color: '#cbd5e1', marginTop: 3, lineHeight: 1.5 }}>{t('docs.noActive.sub')}</p>
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {applications.map(app => {
                 const isActive  = selectedApp?.id === app.id;
                 const appTypes  = SERVICE_DOCS[app.type] ?? [];
-                const appReq    = appTypes.filter(t => DOC_CONFIG[t]?.required);
+                const appReq    = appTypes.filter(dt => DOC_CONFIG[dt]?.required);
                 const appDone   = isActive
-                  ? requiredTypes.filter(t => uploadedMap[t]).length
+                  ? requiredTypes.filter(dt => uploadedMap[dt]).length
                   : 0; // only track for active
                 return (
                   <button key={app.id} onClick={() => loadDocs(app)} style={{
@@ -499,10 +525,10 @@ export default function DocumentsPage() {
                     boxShadow: isActive ? '0 4px 16px rgba(245,158,11,0.12)' : 'none',
                   }}>
                     <p style={{ fontWeight: 700, fontSize: 12, color: '#0f172a', marginBottom: 2 }}>
-                      {app.type.replace(/_/g, ' ')}
+                      {serviceLabel(app.type, t)}
                     </p>
                     <p style={{ fontSize: 10, color: '#64748b' }}>
-                      {app.agency?.name} · {STATUS_LABEL[app.status] ?? app.status}
+                      {app.agency?.name} · {t(STATUS_LABEL_KEY[app.status]) ?? app.status}
                     </p>
                     {isActive && appReq.length > 0 && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 8 }}>
@@ -532,18 +558,18 @@ export default function DocumentsPage() {
               <div style={{ width: 54, height: 54, background: '#f8fafc', borderRadius: 16, border: '1.5px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 14 }}>
                 <FileText size={22} color="#cbd5e1" />
               </div>
-              <p style={{ fontWeight: 700, color: '#64748b', fontSize: 15, marginBottom: 4 }}>Select an application</p>
-              <p style={{ fontSize: 12, color: '#94a3b8' }}>Choose an application on the left to manage its documents.</p>
+              <p style={{ fontWeight: 700, color: '#64748b', fontSize: 15, marginBottom: 4 }}>{t('docs.select')}</p>
+              <p style={{ fontSize: 12, color: '#94a3b8' }}>{t('docs.mainSelect.sub')}</p>
             </div>
           ) : (
             <div>
               {/* Section header */}
               <div style={{ marginBottom: 16 }}>
                 <h2 style={{ fontSize: 16, fontWeight: 800, color: '#0f172a', marginBottom: 3 }}>
-                  {selectedApp.type.replace(/_/g, ' ')} — Documents
+                  {serviceLabel(selectedApp.type, t)} {t('docs.sectionTitleSuffix')}
                 </h2>
                 <p style={{ fontSize: 12, color: '#64748b' }}>
-                  Upload all required documents before visiting the {selectedApp.agency?.name} office.
+                  {t('docs.uploadBeforeVisit1')} {selectedApp.agency?.name} {t('docs.uploadBeforeVisit2')}
                 </p>
               </div>
 
@@ -554,7 +580,7 @@ export default function DocumentsPage() {
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 10, padding: '10px 13px', marginBottom: 18 }}>
                 <Camera size={13} color="#2563eb" style={{ flexShrink: 0, marginTop: 1 }} />
                 <p style={{ fontSize: 11, color: '#1d4ed8', lineHeight: 1.6 }}>
-                  Documents with a <strong>Webcam</strong> button can be captured live with your device camera — no scanner required. You can also upload a file from your device for any document.
+                  {t('docs.webcamTip1')} <strong>{t('docs.webcamBtn')}</strong> {t('docs.webcamTip2')}
                 </p>
               </div>
 
@@ -577,7 +603,7 @@ export default function DocumentsPage() {
               {documents.filter(d => !docTypes.includes(d.documentType)).length > 0 && (
                 <div style={{ marginTop: 24 }}>
                   <p style={{ fontSize: 10, fontWeight: 800, color: '#94a3b8', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 10 }}>
-                    Other Uploads
+                    {t('docs.otherUploads')}
                   </p>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                     {documents.filter(d => !docTypes.includes(d.documentType)).map(doc => (
@@ -585,15 +611,15 @@ export default function DocumentsPage() {
                         <FileText size={13} color="#64748b" style={{ flexShrink: 0 }} />
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <p style={{ fontSize: 12, fontWeight: 600, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{doc.fileName}</p>
-                          <p style={{ fontSize: 10, color: '#94a3b8' }}>{doc.documentType?.replace(/_/g, ' ')} · {new Date(doc.uploadedAt).toLocaleDateString('en-GB')}</p>
+                          <p style={{ fontSize: 10, color: '#94a3b8' }}>{docTypeLabel(doc.documentType, t)} · {new Date(doc.uploadedAt).toLocaleDateString('en-GB')}</p>
                         </div>
                         <a href={`http://localhost:3000${doc.fileUrl}`} target="_blank" rel="noreferrer">
                           <button style={{ padding: '5px 9px', border: '1px solid #e2e8f0', borderRadius: 7, background: 'white', cursor: 'pointer', fontSize: 11, color: '#64748b', fontWeight: 600, fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 3 }}>
-                            <Eye size={11} /> View
+                            <Eye size={11} /> {t('docs.card.view')}
                           </button>
                         </a>
                         <button onClick={() => handleDelete(doc.id)} style={{ padding: '5px 9px', border: '1px solid #fecaca', borderRadius: 7, background: 'white', cursor: 'pointer', fontSize: 11, color: '#ef4444', fontWeight: 600, fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 3 }}>
-                          <Trash2 size={11} /> Remove
+                          <Trash2 size={11} /> {t('docs.card.remove')}
                         </button>
                       </div>
                     ))}
