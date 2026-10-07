@@ -82,15 +82,19 @@ const updateMe = async (citizenId, { fullName, phone, currentPassword, newPasswo
 };
 
 // Admin: get all citizens
-const getAllCitizens = async ({ search } = {}) => {
+const getAllCitizens = async ({ search, role } = {}) => {
   const where = {};
 
-  // Optional search by name or email
   if (search) {
     where.OR = [
       { fullName: { contains: search, mode: 'insensitive' } },
       { email:    { contains: search, mode: 'insensitive' } },
     ];
+  }
+
+  // NEW — filter by role ('CITIZEN' or 'ADMIN')
+  if (role) {
+    where.role = role;
   }
 
   return await prisma.citizen.findMany({
@@ -104,8 +108,8 @@ const getAllCitizens = async ({ search } = {}) => {
       nationalIdNo: true,
       createdAt:    true,
       _count: {
-        select: { applications: true }
-      }
+        select: { applications: true },
+      },
     },
     orderBy: { createdAt: 'desc' },
   });
@@ -145,4 +149,35 @@ const getCitizenById = async (citizenId) => {
   return citizen;
 };
 
-module.exports = { getMe, updateMe, getAllCitizens, getCitizenById };
+const updateCitizenRole = async (citizenId, { role }) => {
+  const VALID_ROLES = ['CITIZEN', 'ADMIN'];
+
+  if (!VALID_ROLES.includes(role)) {
+    const error = new Error(`Invalid role. Must be one of: ${VALID_ROLES.join(', ')}`);
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const citizen = await prisma.citizen.findUnique({ where: { id: citizenId } });
+  if (!citizen) {
+    const error = new Error('Citizen not found');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  // Prevent an admin from accidentally demoting themselves
+  // (the controller can pass req.user.id to enforce this if desired)
+
+  return await prisma.citizen.update({
+    where: { id: citizenId },
+    data:  { role },
+    select: {
+      id:       true,
+      fullName: true,
+      email:    true,
+      role:     true,
+    },
+  });
+};
+
+module.exports = { getMe, updateMe, getAllCitizens, getCitizenById, updateCitizenRole };

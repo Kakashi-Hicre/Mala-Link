@@ -6,6 +6,7 @@ const {
   updateMe,
   getAllCitizens,
   getCitizenById,
+  updateCitizenRole,
 } = require('./citizens.controller');
 
 router.use(protect);
@@ -17,5 +18,7 @@ router.patch('/me',  updateMe);  // PATCH /api/citizens/me
 // Admin only routes
 router.get('/',      restrictTo('ADMIN'), getAllCitizens);     // GET /api/citizens?search=john
 router.get('/:id',   restrictTo('ADMIN'), getCitizenById);    // GET /api/citizens/:id
+
+router.patch('/:id/role', restrictTo('ADMIN'), updateCitizenRole);
 
 module.exports = router;

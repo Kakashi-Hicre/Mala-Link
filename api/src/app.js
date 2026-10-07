@@ -9,6 +9,7 @@ const documentRoutes      = require('./modules/documents/documents.routes');
 const notificationRoutes  = require('./modules/notifications/notifications.routes');
 const agencyRoutes        = require('./modules/agencies/agencies.routes');
 const idcardRoutes        = require('./modules/idcards/idcards.routes');
+const adminRoutes = require('./modules/admin/admin.routes');
 
 // ── New agency-specific form routes ───────────────────────────
 const nrbFormRoutes        = require('./modules/applications/nrbForm/nrbForm.routes');
@@ -33,7 +34,7 @@ app.use('/api/documents',     documentRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/agencies',      agencyRoutes);
 app.use('/api/idcards',       idcardRoutes);
-
+app.use('/api/admin', adminRoutes);
 // ── Agency-specific form routes ────────────────────────────────
 // Each citizen fills the form that matches their application type:
 //   NRB         → POST /api/forms/nrb/:applicationId

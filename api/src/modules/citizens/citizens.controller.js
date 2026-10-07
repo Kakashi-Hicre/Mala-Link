@@ -34,6 +34,14 @@ const getAllCitizens = async (req, res) => {
   }
 };
 
+const updateCitizenRole = async (req, res, next) => {
+  try {
+    const data = await citizensService.updateCitizenRole(req.params.id, req.body);
+    res.json({ data });
+  } catch (err) { next(err); }
+};
+
+
 const getCitizenById = async (req, res) => {
   try {
     const citizen = await citizensService.getCitizenById(req.params.id);
@@ -43,4 +51,4 @@ const getCitizenById = async (req, res) => {
   }
 };
 
-module.exports = { getMe, updateMe, getAllCitizens, getCitizenById };
+module.exports = { getMe, updateMe, getAllCitizens, getCitizenById, updateCitizenRole };
